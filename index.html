@@ -7,9 +7,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --sidebar-width: 240px;
+            --sidebar-width: 180px;
+            --tabbar-height: 40px;
             --sidebar-bg: #1e1e1e;
             --sidebar-header-bg: #252526;
+            --tabbar-bg: #252526;
             --tab-active-bg: #2a2d2e;
             --tab-hover-bg: #252526;
             --accent-color: #4ec9b0;
@@ -36,7 +38,69 @@
 
         #app {
             display: flex;
+            flex-direction: column;
             height: 100vh;
+        }
+
+        /* Top Tab Bar */
+        #tab-bar {
+            height: var(--tabbar-height);
+            background-color: var(--tabbar-bg);
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            overflow-x: auto;
+            z-index: 10;
+        }
+
+        .top-tab {
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            cursor: pointer;
+            transition: all var(--transition-speed);
+            position: relative;
+            border-right: 1px solid var(--border-color);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .top-tab:hover {
+            background-color: var(--tab-hover-bg);
+        }
+
+        .top-tab.active {
+            background-color: var(--tab-active-bg);
+        }
+
+        .top-tab.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background-color: var(--accent-color);
+        }
+
+        .top-tab-close {
+            margin-left: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            transition: all var(--transition-speed);
+            padding: 2px;
+            border-radius: 2px;
+        }
+
+        .top-tab-close:hover {
+            color: var(--text-primary);
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Main Content Area */
+        #main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
         }
 
         /* Sidebar Styles */
@@ -46,7 +110,6 @@
             display: flex;
             flex-direction: column;
             border-right: 1px solid var(--border-color);
-            z-index: 10;
         }
 
         #sidebar-header {
@@ -72,7 +135,7 @@
             padding: 6px 0;
         }
 
-        .tab {
+        .sidebar-tab {
             display: flex;
             align-items: center;
             padding: 6px 16px;
@@ -84,15 +147,15 @@
             font-size: 13px;
         }
 
-        .tab:hover {
+        .sidebar-tab:hover {
             background-color: var(--tab-hover-bg);
         }
 
-        .tab.active {
+        .sidebar-tab.active {
             background-color: var(--tab-active-bg);
         }
 
-        .tab.active::before {
+        .sidebar-tab.active::before {
             content: '';
             position: absolute;
             left: 0;
@@ -116,24 +179,6 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-        }
-
-        .tab-close {
-            opacity: 0;
-            color: var(--text-secondary);
-            font-size: 12px;
-            transition: all var(--transition-speed);
-            padding: 2px;
-            border-radius: 2px;
-        }
-
-        .tab-close:hover {
-            color: var(--text-primary);
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .tab:hover .tab-close {
-            opacity: 1;
         }
 
         #add-tab {
@@ -228,26 +273,32 @@
 </head>
 <body>
     <div id="app">
-        <div id="sidebar">
-            <div id="sidebar-header">
-                <i class="fas fa-folder-open"></i>
-                <span>SCRIPTS</span>
-            </div>
-            <div id="tabs-container">
-                <div class="tab active" data-tab-id="tab1">
-                    <i class="fas fa-file-code tab-icon"></i>
-                    <span class="tab-name">script1.lua</span>
-                    <span class="tab-close">&times;</span>
+        <!-- Top Tab Bar -->
+        <div id="tab-bar">
+            <!-- Top tabs will be added dynamically -->
+        </div>
+        
+        <div id="main-content">
+            <!-- Sidebar -->
+            <div id="sidebar">
+                <div id="sidebar-header">
+                    <i class="fas fa-folder-open"></i>
+                    <span>ALL SCRIPTS</span>
+                </div>
+                <div id="tabs-container">
+                    <!-- Sidebar tabs will be loaded dynamically -->
+                </div>
+                <div id="add-tab">
+                    <i class="fas fa-plus"></i>
+                    <span>New File</span>
                 </div>
             </div>
-            <div id="add-tab">
-                <i class="fas fa-plus"></i>
-                <span>New File</span>
-            </div>
-        </div>
-        <div id="editor-area">
-            <div id="editor-container">
-                <div id="editor-tab1" class="editor"></div>
+            
+            <!-- Editor Area -->
+            <div id="editor-area">
+                <div id="editor-container">
+                    <!-- Editors will be loaded dynamically -->
+                </div>
             </div>
         </div>
     </div>
@@ -256,7 +307,9 @@
     <script>
         // Tab management
         let editors = {};
-        let activeTabId = 'tab1';
+        let allTabs = {}; // Stores all tabs (including closed ones)
+        let openTabs = []; // Stores currently open tab IDs
+        let activeTabId = null;
         let highestTabNumber = 1;
         let renameInput = null;
 
@@ -278,51 +331,317 @@
             }
         };
 
-        require(['vs/editor/editor.main'], function() {
-            // Initialize first editor
-            editors['tab1'] = monaco.editor.create(document.getElementById('editor-tab1'), {
-                value: localStorage.getItem('lua_editor_tab1') || '-- Welcome To Pulse\nprint("Pulse on top!")',
-                language: 'lua',
-                theme: 'vs-dark',
-                automaticLayout: true,
-                minimap: { enabled: true },
-                scrollBeyondLastLine: false,
-                fontSize: 14,
-                lineHeight: 22,
-                fontFamily: "'Cascadia Code', 'Consolas', monospace",
-                renderLineHighlight: 'gutter',
-                roundedSelection: true,
-                padding: { top: 10 },
-                suggest: {
-                    preview: true,
-                    showMethods: true,
-                    showFunctions: true,
-                    showConstructors: true,
-                    showFields: true,
-                    showVariables: true,
-                    showClasses: true,
-                    showStructs: true,
-                    showInterfaces: true,
-                    showModules: true,
-                    showProperties: true,
-                    showEvents: true,
-                    showOperators: true,
-                    showUnits: true,
-                    showValues: true,
-                    showConstants: true,
-                    showEnums: true,
-                    showEnumMembers: true,
-                    showKeywords: true,
-                    showWords: true,
-                    showColors: true,
-                    showFiles: true,
-                    showReferences: true,
-                    showFolders: true,
-                    showTypeParameters: true,
-                    showSnippets: true
+        // Create a new tab (both in sidebar and top bar if opened)
+        function createNewTab(tabId, tabName, initialContent, isOpen = false) {
+            // Add to all tabs
+            allTabs[tabId] = {
+                id: tabId,
+                name: tabName,
+                content: initialContent,
+                isOpen: isOpen
+            };
+            
+            // Save to localStorage
+            saveAllTabs();
+            
+            // Create sidebar tab element
+            const sidebarTab = document.createElement('div');
+            sidebarTab.className = 'sidebar-tab';
+            sidebarTab.setAttribute('data-tab-id', tabId);
+            sidebarTab.innerHTML = `
+                <i class="fas fa-file-code tab-icon"></i>
+                <span class="tab-name">${tabName}</span>
+            `;
+            
+            // Add to sidebar container
+            document.getElementById('tabs-container').appendChild(sidebarTab);
+            
+            // Create editor container (hidden by default)
+            const editorDiv = document.createElement('div');
+            editorDiv.id = `editor-${tabId}`;
+            editorDiv.className = 'editor hidden';
+            document.getElementById('editor-container').appendChild(editorDiv);
+            
+            // Initialize editor if opened
+            if (isOpen) {
+                openTab(tabId);
+            }
+            
+            // Update highest tab number
+            const tabNum = parseInt(tabId.replace('tab', ''));
+            if (tabNum > highestTabNumber) {
+                highestTabNumber = tabNum;
+            }
+            
+            // Add click handler to sidebar tab
+            sidebarTab.addEventListener('click', function() {
+                if (!openTabs.includes(tabId)) {
+                    openTab(tabId);
+                }
+                switchTab(tabId);
+            });
+            
+            // Add double-click handler for renaming
+            const nameElement = sidebarTab.querySelector('.tab-name');
+            nameElement.addEventListener('dblclick', function() {
+                startRenamingTab(tabId, nameElement);
+            });
+        }
+
+        // Open a tab (add to top bar)
+        function openTab(tabId) {
+            if (!allTabs[tabId]) return;
+            
+            // Mark as open
+            allTabs[tabId].isOpen = true;
+            if (!openTabs.includes(tabId)) {
+                openTabs.push(tabId);
+            }
+            
+            // Create top tab element if it doesn't exist
+            if (!document.querySelector(`.top-tab[data-tab-id="${tabId}"]`)) {
+                const topTab = document.createElement('div');
+                topTab.className = 'top-tab';
+                topTab.setAttribute('data-tab-id', tabId);
+                topTab.innerHTML = `
+                    <span class="tab-name">${allTabs[tabId].name}</span>
+                    <span class="top-tab-close">&times;</span>
+                `;
+                
+                // Add to top tab bar
+                document.getElementById('tab-bar').appendChild(topTab);
+                
+                // Add click handler to top tab
+                topTab.addEventListener('click', function(e) {
+                    if (!e.target.classList.contains('top-tab-close')) {
+                        switchTab(tabId);
+                    }
+                });
+                
+                // Add close handler
+                topTab.querySelector('.top-tab-close').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    closeTab(tabId);
+                });
+                
+                // Add double-click handler for renaming
+                const nameElement = topTab.querySelector('.tab-name');
+                nameElement.addEventListener('dblclick', function() {
+                    startRenamingTab(tabId, nameElement);
+                });
+            }
+            
+            // Initialize editor if not already done
+            if (!editors[tabId]) {
+                require(['vs/editor/editor.main'], function() {
+                    editors[tabId] = monaco.editor.create(document.getElementById(`editor-${tabId}`), {
+                        value: allTabs[tabId].content,
+                        language: 'lua',
+                        theme: 'vs-dark',
+                        automaticLayout: true,
+                        minimap: { enabled: true },
+                        fontSize: 14,
+                        lineHeight: 22,
+                        fontFamily: "'Cascadia Code', 'Consolas', monospace",
+                        renderLineHighlight: 'gutter',
+                        roundedSelection: true,
+                        padding: { top: 10 }
+                    });
+                    
+                    // Save content on change
+                    editors[tabId].onDidChangeModelContent(function() {
+                        allTabs[tabId].content = editors[tabId].getValue();
+                        saveAllTabs();
+                    });
+                });
+            }
+            
+            // Save state
+            saveAllTabs();
+        }
+
+        // Start renaming a tab
+        function startRenamingTab(tabId, nameElement) {
+            if (renameInput) return;
+            
+            const originalName = nameElement.textContent;
+            
+            renameInput = document.createElement('input');
+            renameInput.type = 'text';
+            renameInput.className = 'tab-edit';
+            renameInput.value = originalName;
+            
+            nameElement.textContent = '';
+            nameElement.appendChild(renameInput);
+            renameInput.focus();
+            renameInput.select();
+            
+            function finishRename() {
+                const newName = renameInput.value.trim() || originalName;
+                nameElement.textContent = newName;
+                renameInput.remove();
+                renameInput = null;
+                
+                // Update tab name
+                allTabs[tabId].name = newName;
+                
+                // Update all instances of this tab's name
+                document.querySelectorAll(`[data-tab-id="${tabId}"] .tab-name`).forEach(el => {
+                    el.textContent = newName;
+                });
+                
+                saveAllTabs();
+            }
+            
+            renameInput.addEventListener('blur', finishRename);
+            renameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    finishRename();
+                } else if (e.key === 'Escape') {
+                    nameElement.textContent = originalName;
+                    renameInput.remove();
+                    renameInput = null;
                 }
             });
+        }
 
+        // Switch to a tab (make it active)
+        function switchTab(tabId) {
+            if (activeTabId === tabId) return;
+            
+            // Update UI
+            document.querySelectorAll('.top-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.sidebar-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Activate top tab
+            const topTab = document.querySelector(`.top-tab[data-tab-id="${tabId}"]`);
+            if (topTab) topTab.classList.add('active');
+            
+            // Activate sidebar tab
+            const sidebarTab = document.querySelector(`.sidebar-tab[data-tab-id="${tabId}"]`);
+            if (sidebarTab) sidebarTab.classList.add('active');
+            
+            // Hide current editor, show new one
+            document.querySelectorAll('.editor').forEach(editor => {
+                editor.classList.add('hidden');
+            });
+            document.getElementById(`editor-${tabId}`).classList.remove('hidden');
+            
+            // Update active tab
+            activeTabId = tabId;
+            
+            // Trigger layout
+            if (editors[tabId]) {
+                editors[tabId].layout();
+            }
+            
+            // Save active tab
+            localStorage.setItem('lua_editor_activeTab', tabId);
+        }
+
+        // Close a tab (remove from top bar but keep in sidebar)
+        function closeTab(tabId) {
+            if (openTabs.length <= 1) return;
+            
+            // Remove from open tabs
+            openTabs = openTabs.filter(id => id !== tabId);
+            allTabs[tabId].isOpen = false;
+            
+            // Remove top tab element
+            const topTab = document.querySelector(`.top-tab[data-tab-id="${tabId}"]`);
+            if (topTab) topTab.remove();
+            
+            // Hide editor
+            document.getElementById(`editor-${tabId}`).classList.add('hidden');
+            
+            // Switch to another tab if needed
+            if (activeTabId === tabId) {
+                const nextTabId = openTabs[openTabs.length - 1];
+                if (nextTabId) {
+                    switchTab(nextTabId);
+                } else {
+                    activeTabId = null;
+                }
+            }
+            
+            // Save state
+            saveAllTabs();
+        }
+
+        // Save all tab data to localStorage
+        function saveAllTabs() {
+            localStorage.setItem('lua_editor_allTabs', JSON.stringify(allTabs));
+            localStorage.setItem('lua_editor_openTabs', JSON.stringify(openTabs));
+        }
+
+        // Load saved tabs
+        function loadSavedTabs() {
+            // Load all tabs
+            const savedAllTabs = JSON.parse(localStorage.getItem('lua_editor_allTabs')) || {};
+            allTabs = savedAllTabs;
+            
+            // Load open tabs
+            const savedOpenTabs = JSON.parse(localStorage.getItem('lua_editor_openTabs')) || [];
+            openTabs = savedOpenTabs;
+            
+            // Create tabs in sidebar and open the ones that should be open
+            Object.values(allTabs).forEach(tab => {
+                createNewTab(tab.id, tab.name, tab.content, tab.isOpen);
+            });
+            
+            // Activate the last active tab if available
+            const lastActiveTab = localStorage.getItem('lua_editor_activeTab');
+            if (lastActiveTab && openTabs.includes(lastActiveTab)) {
+                switchTab(lastActiveTab);
+            } else if (openTabs.length > 0) {
+                switchTab(openTabs[openTabs.length - 1]);
+            }
+            
+            // Update highest tab number
+            const tabNumbers = Object.keys(allTabs).map(id => parseInt(id.replace('tab', '')));
+            if (tabNumbers.length > 0) {
+                highestTabNumber = Math.max(...tabNumbers);
+            }
+        }
+
+        // Get the next available tab number
+        function getNextTabNumber() {
+            return highestTabNumber + 1;
+        }
+
+        // Add a new tab
+        function addNewTab() {
+            const tabNumber = getNextTabNumber();
+            const tabId = `tab${tabNumber}`;
+            const tabName = `script${tabNumber}.lua`;
+            const initialContent = `-- Welcome To Pulse\nprint("Pulse on top!")`;
+            
+            createNewTab(tabId, tabName, initialContent, true);
+            switchTab(tabId);
+        }
+
+        // Initialize the editor
+        require(['vs/editor/editor.main'], function() {
+            // Load saved tabs
+            loadSavedTabs();
+            
+            // If no tabs exist, create a default one
+            if (Object.keys(allTabs).length === 0) {
+                addNewTab();
+            }
+            
+            // Add new tab button handler
+            document.getElementById('add-tab').addEventListener('click', addNewTab);
+            
+            // Window resize handler
+            window.addEventListener('resize', function() {
+                Object.values(editors).forEach(editor => editor.layout());
+            });
+            
             // Enhanced Lua completions
             monaco.languages.registerCompletionItemProvider('lua', {
                 triggerCharacters: ['.', ':', '(', '\'', '"', '[', '{', ',', ' '],
@@ -337,7 +656,7 @@
                     // Built-in Lua completions
                     const suggestions = [];
 
-                    // Lua keywords (30+ items)
+                    // Lua keywords
                     const luaKeywords = [
                         'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 
                         'function', 'goto', 'if', 'in', 'local', 'nil', 'not', 'or', 
@@ -353,7 +672,7 @@
                         });
                     });
 
-                    // Standard library functions (50+ items)
+                    // Standard library functions
                     const stdLib = [
                         { name: 'print', snippet: 'print(${1:value})' },
                         { name: 'require', snippet: 'require(${1:module})' },
@@ -388,199 +707,6 @@
                         });
                     });
 
-                    // Table library (20+ items)
-                    const tableLib = [
-                        { name: 'table.concat', snippet: 'table.concat(${1:table}, ${2:[sep]}, ${3:[i]}, ${4:[j]})' },
-                        { name: 'table.insert', snippet: 'table.insert(${1:table}, ${2:[pos]}, ${3:value})' },
-                        { name: 'table.remove', snippet: 'table.remove(${1:table}, ${2:[pos]})' },
-                        { name: 'table.sort', snippet: 'table.sort(${1:table}, ${2:[comp]})' },
-                        { name: 'table.unpack', snippet: 'table.unpack(${1:list}, ${2:[i]}, ${3:[j]})' },
-                        { name: 'table.pack', snippet: 'table.pack(...)' },
-                        { name: 'table.move', snippet: 'table.move(${1:a1}, ${2:f}, ${3:e}, ${4:t}, ${5:[a2]})' }
-                    ];
-                    
-                    tableLib.forEach(method => {
-                        suggestions.push({
-                            label: method.name,
-                            kind: monaco.languages.CompletionItemKind.Method,
-                            documentation: `Table method\n\`${method.snippet}\``,
-                            insertText: method.snippet,
-                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-                        });
-                    });
-
-                    // String library (30+ items)
-                    const stringLib = [
-                        { name: 'string.byte', snippet: 'string.byte(${1:s}, ${2:[i]}, ${3:[j]})' },
-                        { name: 'string.char', snippet: 'string.char(${1:...})' },
-                        { name: 'string.find', snippet: 'string.find(${1:s}, ${2:pattern}, ${3:[init]}, ${4:[plain]})' },
-                        { name: 'string.format', snippet: 'string.format(${1:formatstring}, ${2:...})' },
-                        { name: 'string.gmatch', snippet: 'string.gmatch(${1:s}, ${2:pattern})' },
-                        { name: 'string.gsub', snippet: 'string.gsub(${1:s}, ${2:pattern}, ${3:repl}, ${4:[n]})' },
-                        { name: 'string.len', snippet: 'string.len(${1:s})' },
-                        { name: 'string.lower', snippet: 'string.lower(${1:s})' },
-                        { name: 'string.match', snippet: 'string.match(${1:s}, ${2:pattern}, ${3:[init]})' },
-                        { name: 'string.rep', snippet: 'string.rep(${1:s}, ${2:n})' },
-                        { name: 'string.reverse', snippet: 'string.reverse(${1:s})' },
-                        { name: 'string.sub', snippet: 'string.sub(${1:s}, ${2:i}, ${3:[j]})' },
-                        { name: 'string.upper', snippet: 'string.upper(${1:s})' },
-                        { name: 'string.pack', snippet: 'string.pack(${1:fmt}, ${2:...})' },
-                        { name: 'string.unpack', snippet: 'string.unpack(${1:fmt}, ${2:s}, ${3:[pos]})' }
-                    ];
-                    
-                    stringLib.forEach(method => {
-                        suggestions.push({
-                            label: method.name,
-                            kind: monaco.languages.CompletionItemKind.Method,
-                            documentation: `String method\n\`${method.snippet}\``,
-                            insertText: method.snippet,
-                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-                        });
-                    });
-
-                    // Math library (30+ items)
-                    const mathLib = [
-                        { name: 'math.abs', snippet: 'math.abs(${1:x})' },
-                        { name: 'math.acos', snippet: 'math.acos(${1:x})' },
-                        { name: 'math.asin', snippet: 'math.asin(${1:x})' },
-                        { name: 'math.atan', snippet: 'math.atan(${1:x})' },
-                        { name: 'math.ceil', snippet: 'math.ceil(${1:x})' },
-                        { name: 'math.cos', snippet: 'math.cos(${1:x})' },
-                        { name: 'math.deg', snippet: 'math.deg(${1:x})' },
-                        { name: 'math.exp', snippet: 'math.exp(${1:x})' },
-                        { name: 'math.floor', snippet: 'math.floor(${1:x})' },
-                        { name: 'math.log', snippet: 'math.log(${1:x}, ${2:[base]})' },
-                        { name: 'math.max', snippet: 'math.max(${1:x}, ${2:...})' },
-                        { name: 'math.min', snippet: 'math.min(${1:x}, ${2:...})' },
-                        { name: 'math.pi', snippet: 'math.pi' },
-                        { name: 'math.rad', snippet: 'math.rad(${1:x})' },
-                        { name: 'math.random', snippet: 'math.random(${1:[m]}, ${2:[n]})' },
-                        { name: 'math.randomseed', snippet: 'math.randomseed(${1:x})' },
-                        { name: 'math.sin', snippet: 'math.sin(${1:x})' },
-                        { name: 'math.sqrt', snippet: 'math.sqrt(${1:x})' },
-                        { name: 'math.tan', snippet: 'math.tan(${1:x})' },
-                        { name: 'math.tointeger', snippet: 'math.tointeger(${1:x})' },
-                        { name: 'math.type', snippet: 'math.type(${1:x})' },
-                        { name: 'math.ult', snippet: 'math.ult(${1:m}, ${2:n})' }
-                    ];
-                    
-                    mathLib.forEach(func => {
-                        suggestions.push({
-                            label: func.name,
-                            kind: monaco.languages.CompletionItemKind.Function,
-                            documentation: `Math function\n\`${func.snippet}\``,
-                            insertText: func.snippet,
-                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-                        });
-                    });
-
-                    // Common patterns (snippets)
-                    const snippets = [
-                        {
-                            label: 'function',
-                            insertText: [
-                                'function ${1:name}(${2:params})',
-                                '\t${3:-- body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'Function declaration'
-                        },
-                        {
-                            label: 'for loop',
-                            insertText: [
-                                'for ${1:i} = ${2:1}, ${3:10} do',
-                                '\t${4:-- body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'Numeric for loop'
-                        },
-                        {
-                            label: 'for in loop',
-                            insertText: [
-                                'for ${1:key}, ${2:value} in pairs(${3:table}) do',
-                                '\t${4:-- body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'Generic for loop'
-                        },
-                        {
-                            label: 'if statement',
-                            insertText: [
-                                'if ${1:condition} then',
-                                '\t${2:-- body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'Conditional statement'
-                        },
-                        {
-                            label: 'if-else',
-                            insertText: [
-                                'if ${1:condition} then',
-                                '\t${2:-- if body}',
-                                'else',
-                                '\t${3:-- else body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'If-else statement'
-                        },
-                        {
-                            label: 'while loop',
-                            insertText: [
-                                'while ${1:condition} do',
-                                '\t${2:-- body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'While loop'
-                        },
-                        {
-                            label: 'repeat until',
-                            insertText: [
-                                'repeat',
-                                '\t${1:-- body}',
-                                'until ${2:condition}'
-                            ].join('\n'),
-                            documentation: 'Repeat-until loop'
-                        },
-                        {
-                            label: 'local function',
-                            insertText: [
-                                'local function ${1:name}(${2:params})',
-                                '\t${3:-- body}',
-                                'end'
-                            ].join('\n'),
-                            documentation: 'Local function declaration'
-                        },
-                        {
-                            label: 'table constructor',
-                            insertText: '{\n\t${1:-- elements}\n}',
-                            documentation: 'Table constructor'
-                        },
-                        {
-                            label: 'metatable',
-                            insertText: [
-                                'local ${1:mt} = {',
-                                '\t__index = function(t, k)',
-                                '\t\t${2:-- index metamethod}',
-                                '\tend,',
-                                '\t__newindex = function(t, k, v)',
-                                '\t\t${3:-- newindex metamethod}',
-                                '\tend',
-                                '}'
-                            ].join('\n'),
-                            documentation: 'Metatable definition'
-                        }
-                    ];
-                    
-                    snippets.forEach(snippet => {
-                        suggestions.push({
-                            label: snippet.label,
-                            kind: monaco.languages.CompletionItemKind.Snippet,
-                            documentation: snippet.documentation,
-                            insertText: snippet.insertText,
-                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-                        });
-                    });
-
                     // Add variables from current document
                     const varMatches = textUntilPosition.matchAll(/\blocal\s+(\w+)/g);
                     for (const match of varMatches) {
@@ -595,210 +721,7 @@
                     return { suggestions };
                 }
             });
-
-            // Save content on change
-            editors['tab1'].onDidChangeModelContent(function() {
-                localStorage.setItem('lua_editor_tab1', editors['tab1'].getValue());
-            });
-            
-            // Window resize handler
-            window.addEventListener('resize', function() {
-                Object.values(editors).forEach(editor => editor.layout());
-            });
-            
-            // Tab functionality
-            document.getElementById('add-tab').addEventListener('click', addNewTab);
-            
-            // Close tab handler
-            document.getElementById('tabs-container').addEventListener('click', function(e) {
-                if (e.target.classList.contains('tab-close')) {
-                    const tabId = e.target.closest('.tab').getAttribute('data-tab-id');
-                    closeTab(tabId);
-                    e.stopPropagation();
-                }
-            });
-            
-            // Switch tab handler
-            document.getElementById('tabs-container').addEventListener('click', function(e) {
-                const tab = e.target.closest('.tab');
-                if (tab && !e.target.classList.contains('tab-close') && !renameInput) {
-                    const tabId = tab.getAttribute('data-tab-id');
-                    switchTab(tabId);
-                }
-            });
-            
-            // Double-click to rename
-            document.getElementById('tabs-container').addEventListener('dblclick', function(e) {
-                const tab = e.target.closest('.tab');
-                if (tab && !e.target.classList.contains('tab-close')) {
-                    renameTab(tab);
-                }
-            });
         });
-        
-        // Get the next available tab number
-        function getNextTabNumber() {
-            const tabNumbers = Array.from(document.querySelectorAll('.tab'))
-                .map(tab => {
-                    const match = tab.querySelector('.tab-name').textContent.match(/script(\d+)\.lua/);
-                    return match ? parseInt(match[1]) : 0;
-                })
-                .filter(num => !isNaN(num));
-            
-            if (tabNumbers.length === 0) return 1;
-            
-            const maxExisting = Math.max(...tabNumbers);
-            highestTabNumber = Math.max(highestTabNumber, maxExisting) + 1;
-            return highestTabNumber;
-        }
-        
-        // Tab functions
-        function addNewTab() {
-            const tabNumber = getNextTabNumber();
-            const tabId = `tab${tabNumber}`;
-            const tabName = `script${tabNumber}.lua`;
-            
-            // Create tab element
-            const tab = document.createElement('div');
-            tab.className = 'tab fade-in';
-            tab.setAttribute('data-tab-id', tabId);
-            tab.innerHTML = `
-                <i class="fas fa-file-code tab-icon"></i>
-                <span class="tab-name">${tabName}</span>
-                <span class="tab-close">&times;</span>
-            `;
-            
-            // Add to container
-            document.getElementById('tabs-container').appendChild(tab);
-            
-            // Create editor container
-            const editorDiv = document.createElement('div');
-            editorDiv.id = `editor-${tabId}`;
-            editorDiv.className = 'editor hidden';
-            document.getElementById('editor-container').appendChild(editorDiv);
-            
-            // Initialize editor
-            require(['vs/editor/editor.main'], function() {
-                editors[tabId] = monaco.editor.create(editorDiv, {
-                    value: localStorage.getItem(`lua_editor_${tabId}`) || `-- New Lua script ${tabNumber}\nprint("Hello from script ${tabNumber}!")`,
-                    language: 'lua',
-                    theme: 'vs-dark',
-                    automaticLayout: true,
-                    minimap: { enabled: true },
-                    fontSize: 14,
-                    lineHeight: 22,
-                    suggest: {
-                        preview: true,
-                        showMethods: true,
-                        showFunctions: true,
-                        showConstructors: true
-                    }
-                });
-                
-                // Save content on change
-                editors[tabId].onDidChangeModelContent(function() {
-                    localStorage.setItem(`lua_editor_${tabId}`, editors[tabId].getValue());
-                });
-                
-                // Switch to new tab
-                switchTab(tabId);
-            });
-        }
-        
-        function switchTab(tabId) {
-            if (activeTabId === tabId) return;
-            
-            // Update UI
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelector(`.tab[data-tab-id="${tabId}"]`).classList.add('active');
-            
-            // Hide current editor, show new one
-            document.querySelectorAll('.editor').forEach(editor => {
-                editor.classList.add('hidden');
-            });
-            document.getElementById(`editor-${tabId}`).classList.remove('hidden');
-            
-            // Update active tab
-            activeTabId = tabId;
-            
-            // Trigger layout
-            if (editors[tabId]) {
-                editors[tabId].layout();
-            }
-        }
-        
-        function closeTab(tabId) {
-            if (Object.keys(editors).length <= 1) return;
-            
-            // Remove tab from UI
-            const tab = document.querySelector(`.tab[data-tab-id="${tabId}"]`);
-            if (tab) {
-                tab.classList.add('fade-out');
-                setTimeout(() => tab.remove(), 150);
-            }
-            
-            // Remove editor
-            if (editors[tabId]) {
-                editors[tabId].dispose();
-                delete editors[tabId];
-            }
-            
-            // Remove editor container
-            const editorDiv = document.getElementById(`editor-${tabId}`);
-            if (editorDiv) editorDiv.remove();
-            
-            // Switch to another tab if needed
-            if (activeTabId === tabId) {
-                const remainingTabs = document.querySelectorAll('.tab');
-                if (remainingTabs.length > 0) {
-                    switchTab(remainingTabs[0].getAttribute('data-tab-id'));
-                }
-            }
-        }
-        
-        function renameTab(tabElement) {
-            if (renameInput) return;
-            
-            const tabNameElement = tabElement.querySelector('.tab-name');
-            const originalName = tabNameElement.textContent;
-            
-            renameInput = document.createElement('input');
-            renameInput.type = 'text';
-            renameInput.className = 'tab-edit';
-            renameInput.value = originalName;
-            
-            tabNameElement.textContent = '';
-            tabNameElement.appendChild(renameInput);
-            renameInput.focus();
-            renameInput.select();
-            
-            function finishRename() {
-                const newName = renameInput.value.trim() || originalName;
-                tabNameElement.textContent = newName;
-                renameInput.remove();
-                renameInput = null;
-                
-                // Save the tab name
-                const tabId = tabElement.getAttribute('data-tab-id');
-                localStorage.setItem(`lua_editor_name_${tabId}`, newName);
-            }
-            
-            renameInput.addEventListener('blur', finishRename);
-            renameInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    finishRename();
-                } else if (e.key === 'Escape') {
-                    tabNameElement.textContent = originalName;
-                    renameInput.remove();
-                    renameInput = null;
-                }
-            });
-        }
-
-	
-
     </script>
 </body>
 </html>
