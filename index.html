@@ -313,6 +313,11 @@
         let highestTabNumber = 1;
         let renameInput = null;
 
+// Track the active editor globally
+window.getActiveEditorContent = function() {
+    return editors[activeTabId] ? editors[activeTabId].getValue() : "";
+};
+
         // Initialize Monaco
         require.config({
             paths: {
